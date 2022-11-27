@@ -6,85 +6,102 @@ require('pretty-error').start();
 const bcrypt = require("bcrypt");
 require('dotenv').config();
 const jwt = require("jsonwebtoken");
-const otpGenerator = require("otp-generator");
+const auth = require("../middleware/auth");
+const UserController = require("../controller/user")
 
-
-// Token verification middleware
-function verifyToken(req, res, next) {
-    if (!req.headers.authorization) {
-        return res.status(401).send("Unauthorized request...");
-    }
-    let token = req.headers.authorization;
-    // let token = req.headers.authorization.split(' ')[1];
-    if (token === 'null') {
-        return res.status(401).send("Unauthorized request...");
-    }
-    let payload = jwt.verify(token, process.env.SECRET_KEY);
-    if (!payload) {
-        return res.status(401).send("Unauthorized request...");
-    }
-    req.userId = payload.subject;
-    // console.log(req.userId);
-    next();
-}
+// // Token verification middleware
+// function verifyToken(req, res, next) {
+//     if (!req.headers.authorization) {
+//         return res.status(401).send("Unauthorized request...");
+//     }
+//     let token = req.headers.authorization;
+//     // let token = req.headers.authorization.split(' ')[1];
+//     if (token === 'null') {
+//         return res.status(401).send("Unauthorized request...");
+//     }
+//     let payload = jwt.verify(token, process.env.SECRET_KEY);
+//     // console.log("payload", payload)
+//     if (!payload) {
+//         return res.status(401).send("Unauthorized request...");
+//     }
+//     req.userId = payload.subject;
+//     // console.log("userid", req.userId);
+//     next();
+// }
 
 router.post("/register", async (req, res) => {
-    let body = req.body;
-    let user = new User();
+    try {
+        let body = req.body;
+        let user = new User();
 
-    if (!(body.data)) {
-        return res.status(400).send({ error: "Data not formatted properly" });
+        if (!body.data) {
+            return res.status(400).send({ error: "Data not formatted properly" });
+        }
+
+        user.username = body.data.username;
+        user.email = body.data.email;
+        user.mobileno = body.data.mobileno;
+        // user.verified = false;
+
+        if (body.data.password != body.data.confirmPassword) {
+            return res.status(400).send({ error: "Confirm password is not correct" });
+        }
+
+        // generate salt to hash password
+        const salt = await bcrypt.genSalt(10);
+
+        // now we set user password to hashed password
+        user.password = await bcrypt.hash(body.data.password, salt);
+
+        user.save().then((result) => {
+            // console.log(result);
+            let payload = { subject: result._id };
+            let token = jwt.sign(payload, process.env.SECRET_KEY, { expiresIn: "1hr" })
+            res.status(200).json({ staus: "Success", Token: token, "expiresIn": "1 Hour" });
+        }, (err) => {
+            res.end(JSON.stringify(err));
+            console.log(err);
+        })
     }
-
-    user.username = body.data.username;
-    user.email = body.data.email;
-    user.mobileno = body.data.mobileno;
-    user.verified = false;
-
-    if (body.data.password != body.data.confirmPassword) {
-        return res.status(400).send({ error: "Confirm password is not correct" });
+    catch (err) {
+        console.log(err.message);
     }
-
-    // generate salt to hash password
-    const salt = await bcrypt.genSalt(10);
-
-    // now we set user password to hashed password
-    user.password = await bcrypt.hash(body.data.password, salt);
-    user.confirmPassword = user.password;
-
-    user.save().then((result) => {
-        // console.log(result);
-        let payload = { subject: result._id };
-        let token = jwt.sign(payload, process.env.SECRET_KEY)
-
-        res.status(200).json({ staus: "Success", Token: token });
-    }, (err) => {
-        res.end(JSON.stringify(err));
-        console.log(err);
-    })
 });
 
 router.post("/login", async (req, res) => {
-    const body = req.body;
-    const user = await User.findOne({ email: body.data.email });
-    if (user) {
-        const validPassword = await bcrypt.compare(body.data.password, user.password);
-        // console.log(validPassword);
-        if (validPassword) {
-            let payload = { subject: user._id };
-            let token = jwt.sign(payload, process.env.SECRET_KEY);
+    try {
+        const body = req.body;
+        const user = await User.findOne({ email: body.data.email });
+        if (!user) {
+            res.send({status:"failed", error: "Invalid username" });
+            return;
+        }
+        if (user && !user.verified) {
+            res.send({status:"failed", error: "User is not verified" });
+            return;
+        }
+        if (user) {
+            const validPassword = await bcrypt.compare(body.data.password, user.password);
+            // console.log(validPassword);
+            if (validPassword) {
+                let payload = { subject: user._id };
+                let token = jwt.sign(payload, process.env.SECRET_KEY, { expiresIn: "1hr" });
 
-            res.status(200).json({ staus: "Success", Token: token });
-        } else {
-            res.status(400).json({ error: "Invalid Password" });
+                res.status(200).json({ status: "success", Token: token, "ecpiresIn": "1 hour" });
+            } else {
+                res.status(400).json({status:"failed", error: "Invalid Password" });
+            }
+        }
+        else {
+            res.status(401).json({status:"failed", error: "User does not exist" });
         }
     }
-    else {
-        res.status(401).json({ error: "User does not exist" });
+    catch (error) {
+        console.log(error.message);
     }
 });
 
-router.get("/getDetails", verifyToken, async (req, res) => {
+router.get("/getDetails", auth.verifyToken, async (req, res) => {
     let events = [
         {
             "userId": 1,
@@ -120,11 +137,8 @@ router.get("/getDetails", verifyToken, async (req, res) => {
     res.json(events);
 });
 
-// router.post("/generateOtp", async (req, res) => {
-//     let body = req.body;
-//     console.log(body);
-//     let user = new User
-// })
+router.route("/verifyUserEmail").post(new UserController().verifyMail);
+
 
 
 module.exports = router;

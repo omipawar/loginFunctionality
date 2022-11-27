@@ -20,12 +20,9 @@ const schema = new Schema(
             type: String,
             required: true
         },
-        confirmPassword: {
-            type: String,
-            required: true
-        },
         verified: {
             type: Boolean,
+            default: false,
             required: true
         }
     },

@@ -7,29 +7,6 @@ const Otp = require("../Models/Otp");
 const User = require("../Models/User");
 const nodemailer = require("nodemailer");
 
-let transporter = nodemailer.createTransport({
-    service: "",
-    auth: {
-        user: "",
-        pass: ""
-    }
-})
-
-let mailOptions = {
-    from: "",
-    to: "",
-    subject: "",
-    text: ""
-}
-
-transporter.sendMail(mailOptions, function (err, success) {
-    if (err) {
-        console.log(err);
-    }
-    else {
-        alert("Email is send to your mail successfuly")
-    }
-})
 
 router.post("/generateOtp", async (req, res) => {
     try {
